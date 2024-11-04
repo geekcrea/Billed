@@ -52,6 +52,9 @@ export default class {
               }
             }
           })
+          // Trie les factures par date décroissante
+          .sort((a, b) => new Date(b.date) - new Date(a.date))
+          
           console.log('length', bills.length)
         return bills
       })
