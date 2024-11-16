@@ -2,276 +2,207 @@
  * @jest-environment jsdom
  */
 
-import { screen, fireEvent } from "@testing-library/dom";
-import NewBillUI from "../views/NewBillUI.js";
-import NewBill from "../containers/NewBill.js";
-import BillsUI from "../views/BillsUI.js";
-import { localStorageMock } from "../__mocks__/localStorage.js";
-import mockStore from "../__mocks__/store";
-import { ROUTES, ROUTES_PATH } from "../constants/routes.js";
-import router from "../app/Router.js";
+import { fireEvent, screen, waitFor } from '@testing-library/dom';
+import { ROUTES_PATH } from '../constants/routes.js';
+import NewBillUI from '../views/NewBillUI.js';
+import NewBill from '../containers/NewBill.js';
+import mockedStore from '../__mocks__/store.js';
 
-jest.mock("../app/Store", () => mockStore);
+// Mock the store for testing purposes
+jest.mock('../app/Store', () => mockedStore);
+
+let newBill, onNavigate;
 
 beforeEach(() => {
   document.body.innerHTML = NewBillUI();
+  localStorage.setItem(
+    'user',
+    JSON.stringify({ type: 'Employee', email: 'a@a' })
+  );
+  onNavigate = jest.fn();
+  newBill = new NewBill({
+    document,
+    onNavigate,
+    store: mockedStore,
+    localStorage: window.localStorage,
+  });
 });
 
-const onNavigate = (pathname) => {
-  document.body.innerHTML = ROUTES({ pathname });
-};
+afterEach(() => {
+  localStorage.clear();
+  document.body.innerHTML = '';
+});
 
-describe("Given I am connected as an employee", () => {
-  describe("When I am on NewBill Page", () => {
-    // test affichage page nouvelle note de frais
-    test("Then the newBill should be render", () => {
-      //to-do write assertion
-      expect(screen.getAllByText("Envoyer une note de frais")).toBeTruthy();
-    });
-  });
+// Main test suite for NewBill functionality
+describe('Given I am an employee', () => {
+  // Testing file change detection on NewBill page
+  describe('When I am on NewBill Page', () => {
+    test('Then it should detect change on file input', async () => {
+      // Mock the handleChangeFile function to test file change detection
+      const handleChangeFile1 = jest.fn((e) => newBill.handleChangeFile(e));
+      const imageInput = screen.getByTestId('file');
 
-  // test affichage message d'erreur lorsque l'utilisateur choisi un fichier avec la mauvaise extension
-  describe("When I upload a file with invalid format", () => {
-    test("Then it should display an error message", () => {
-      // Instance NewBill
-      const newBill = new NewBill({
-        document,
-        onNavigate,
-        store: mockStore,
-        localStorage: window.localStorage,
-      });
+      // Check initial state of fileUrl, fileName, and billId
+      expect(newBill.fileUrl).toBeNull();
+      expect(newBill.fileName).toBeNull();
+      expect(newBill.billId).toBeNull();
+      expect(newBill.fileName).toBeFalsy();
 
-      // Simulation chargement fichier
-      const handleChangeFile = jest.fn(() => newBill.handleChangeFile);
-      const inputFile = screen.getByTestId("file");
-
-      inputFile.addEventListener("change", handleChangeFile);
-
-      fireEvent.change(inputFile, {
+      // Add event listener and trigger file change event
+      imageInput.addEventListener('change', handleChangeFile1);
+      const file = new File(['blob'], 'fichier.png', { type: 'image/png' });
+      await fireEvent.change(imageInput, {
         target: {
-          files: [new File(["test.txt"], "test.txt", { type: "image/txt" })],
+          files: [file],
         },
       });
 
-      // Message erreur
-      const error = screen.getByTestId("errorFile");
-      expect(error).toBeTruthy();
+      // Verify the file change event is captured
+      expect(handleChangeFile1).toHaveBeenCalled();
+
+      // Verify that variables have been changed
+      expect(newBill.fileUrl).not.toBeNull();
+      expect(newBill.fileName).not.toBeNull();
     });
   });
 
-  // test lorque l'utilisateur choisit un fichier au format valide
-  describe("When I upload a file with valid format", () => {
-    test("then it errorFile is false", () => {
-      window.localStorage.setItem(
-        "user",
-        JSON.stringify({
-          type: "Employee",
-          email: "azerty@email.com",
-        })
+  // Testing for error message display on uploading non-allowed file format
+  describe('When I am on NewBill Page and upload a non-allowed file', () => {
+    test('Then the error message should be displayed', async () => {
+      // Mock handleChangeFile function to test error message display
+      const handleChangeFile = jest.fn((e) => newBill.handleChangeFile(e));
+      const fileInput = screen.getByTestId('file');
+      const errorMessage = document.getElementById('file-error-message');
+      fileInput.addEventListener('change', handleChangeFile);
+
+      // Simulate uploading a non-allowed file format
+      const file = new File(['file content'], 'fichier.txt', {
+        type: 'text/plain',
+      });
+      fireEvent.change(fileInput, {
+        target: { files: [file] },
+      });
+
+      // Verify that error message is displayed for non-allowed file format
+      expect(errorMessage.style.display).toBe('block');
+      expect(errorMessage.textContent).toContain(
+        'Seuls les fichiers avec les extensions suivantes sont autorisés'
       );
-
-      const newBill = new NewBill({
-        document,
-        onNavigate,
-        store: mockStore,
-        localStorage: window.localStorage,
-      });
-
-      const handleChangeFile = jest.fn(() => newBill.handleChangeFile);
-      const inputFile = screen.getByTestId("file");
-
-      inputFile.addEventListener("change", handleChangeFile);
-
-      fireEvent.change(inputFile, {
-        target: {
-          files: [new File(["test"], "test.jpg", { type: "image/jpg" })],
-        },
-      });
-
-      const errorVisible = newBill.errorFile;
-      expect(errorVisible).toBe(false);
+      expect(handleChangeFile).toHaveBeenCalled();
     });
   });
 
-  // test affichage message erreur lorsque l'utilisateur choisi une mauvaise date
-  describe("when I choose the wrong date", () => {
-    test("Then it should display an error message, day error", () => {
-      const newBill = new NewBill({
-        document,
-        onNavigate,
-        store: mockStore,
-        localStorage: window.localStorage,
-      });
+  // Testing form submission with valid data
+  describe('When I submit the form with valid data', () => {
+    test('Then the form should be submitted and navigate to Bills page', () => {
+      // Mock the updateBill function to simulate form submission
+      jest.spyOn(newBill, 'updateBill').mockImplementation(() => {});
 
-      const handleChangeDate = jest.fn(() => newBill.handleChangeDate);
-      const inputDate = screen.getByTestId("datepicker");
+      // Fill out the form
+      const typeSelect = screen.getByTestId('expense-type');
+      const nameInput = screen.getByTestId('expense-name');
+      const amountInput = screen.getByTestId('amount');
+      const dateInput = screen.getByTestId('datepicker');
+      const vatInput = screen.getByTestId('vat');
+      const pctInput = screen.getByTestId('pct');
+      const commentaryTextArea = screen.getByTestId('commentary');
 
-      inputDate.addEventListener("change", handleChangeDate);
+      fireEvent.change(typeSelect, { target: { value: 'Transports' } });
+      fireEvent.change(nameInput, { target: { value: 'Ticket' } });
+      fireEvent.change(amountInput, { target: { value: '100' } });
+      fireEvent.change(dateInput, { target: { value: '2021-07-01' } });
+      fireEvent.change(vatInput, { target: { value: '20' } });
+      fireEvent.change(pctInput, { target: { value: '20' } });
+      fireEvent.change(commentaryTextArea, { target: { value: 'Commentary' } });
 
-      const today = new Date();
-      let day = today.getDate() + 1;
-      let month = today.getMonth() + 1;
-      const year = today.getFullYear();
-
-      month = month < 10 ? "0" + month : month;
-      day = day < 10 ? "0" + day : day;
-
-      fireEvent.change(inputDate, {
-        target: {
-          value: `${year}-${month}-${day}`,
-        },
-      });
-
-      const error = screen.getByTestId("errorDate");
-      expect(error).toBeTruthy();
-    });
-  });
-
-  // test lorsqu'une bonne date est choisie
-  describe("when I choose the right date", () => {
-    test("Then it errorDate is false", () => {
-      const newBill = new NewBill({
-        document,
-        onNavigate,
-        store: mockStore,
-        localStorage: window.localStorage,
-      });
-
-      const handleChangeDate = jest.fn(() => newBill.handleChangeDate);
-      const inputDate = screen.getByTestId("datepicker");
-
-      inputDate.addEventListener("change", handleChangeDate);
-
-      fireEvent.change(inputDate, {
-        target: {
-          value: `2024-04-18`,
-        },
-      });
-
-      const error = newBill.errorDate;
-      expect(error).toBe(false);
-    });
-  });
-
-  // test lorsque le formulaire est correctement rempli
-  describe("When I submit the form completed", () => {
-    test("Then the bill is created", () => {
-      Object.defineProperty(window, "localStorage", {
-        value: localStorageMock,
-      });
-
-      window.localStorage.setItem(
-        "user",
-        JSON.stringify({
-          type: "Employee",
-          email: "azerty@email.com",
-        })
-      );
-
-      const newBill = new NewBill({
-        document,
-        onNavigate,
-        store: mockStore,
-        localStorage: window.localStorage,
-      });
-
-      const validBill = {
-        type: "Restaurants et bars",
-        name: "Vol Paris Londres",
-        date: "2024-02-15",
-        amount: 200,
-        vat: 70,
-        pct: 30,
-        commentary: "Commentary",
-        fileUrl: "../img/0.jpg",
-        fileName: "test.jpg",
-        status: "pending",
-      };
-
-      screen.getByTestId("expense-type").value = validBill.type;
-      screen.getByTestId("expense-name").value = validBill.name;
-      screen.getByTestId("datepicker").value = validBill.date;
-      screen.getByTestId("amount").value = validBill.amount;
-      screen.getByTestId("vat").value = validBill.vat;
-      screen.getByTestId("pct").value = validBill.pct;
-      screen.getByTestId("commentary").value = validBill.commentary;
-
-      newBill.fileName = validBill.fileName;
-      newBill.fileUrl = validBill.fileUrl;
-
-      newBill.updateBill = jest.fn();
-      const handleSubmit = jest.fn((e) => newBill.handleSubmit(e));
-
-      const form = screen.getByTestId("form-new-bill");
-      form.addEventListener("submit", handleSubmit);
+      // Simulate form submission
+      const form = screen.getByTestId('form-new-bill');
       fireEvent.submit(form);
 
-      expect(handleSubmit).toHaveBeenCalled();
+      // Check the form submission process
       expect(newBill.updateBill).toHaveBeenCalled();
+      expect(onNavigate).toHaveBeenCalledWith(ROUTES_PATH['Bills']);
     });
   });
 
-  // test d'intégration POST new bill
-  describe("Given I am a user connected as Employee", () => {
-    beforeEach(() => {
-      jest.spyOn(mockStore, "bills");
+  // Testing the bill update functionality
+  describe('When I update a bill', () => {
+    test('Then the bill should be updated and navigate to Bills page', async () => {
+      // Mocking the store's bills().update function to simulate the update operation
+      const updateSpy = jest
+        .spyOn(mockedStore.bills(), 'update')
+        .mockResolvedValueOnce({});
 
-      localStorage.setItem(
-        "user",
-        JSON.stringify({ type: "Employee", email: "a@a" })
-      );
-      const root = document.createElement("div");
-      root.setAttribute("id", "root");
-      document.body.append(root);
-      router();
-    });
+      // Create a bill object to be updated
+      const bill = {
+        id: 'abc123',
+        type: 'Transports',
+        name: 'Ticket',
+        amount: 100,
+        date: '2021-07-01',
+        vat: '20',
+        pct: 20,
+        commentary: 'Commentary',
+        fileUrl: 'url',
+        fileName: 'fileName',
+      };
+      newBill.billId = 'abc123';
 
-    describe("When I navigate to newBill", () => {
-      // Nouvelle facture
-      test("promise from mock API POST returns object bills with correct values", async () => {
-        window.onNavigate(ROUTES_PATH.NewBill);
+      // Calling updateBill method with the dummy bill object
+      await newBill.updateBill(bill);
 
-        const bills = await mockStore.bills().create();
-        expect(bills.key).toBe("1234");
-        expect(bills.fileUrl).toBe("https://localhost:3456/images/test.jpg");
+      // Checking if the mock store's update function was called correctly with the updated bill data
+      expect(updateSpy).toHaveBeenCalledWith({
+        data: JSON.stringify(bill),
+        selector: 'abc123',
       });
 
-      // Erreur 404
-      test("Then, fetches bills from an API and fails with 404 message error", async () => {
-        window.onNavigate(ROUTES_PATH.NewBill);
-
-        mockStore.bills.mockImplementationOnce(() => {
-          return {
-            create: () => {
-              return Promise.reject(new Error("Erreur 404"));
-            },
-          };
-        });
-
-        await new Promise(process.nextTick);
-        document.body.innerHTML = BillsUI({ error: "Erreur 404" });
-        const message = screen.getByText("Erreur 404");
-        expect(message).toBeTruthy();
-      });
-
-      // Erreur 500
-      test("Then, fetches messages from an API and fails with 500 message error", async () => {
-        mockStore.bills.mockImplementationOnce(() => {
-          return {
-            create: () => {
-              return Promise.reject(new Error("Erreur 500"));
-            },
-            list: () => {
-              return Promise.resolve([]);
-            },
-          };
-        });
-        await new Promise(process.nextTick);
-        document.body.innerHTML = BillsUI({ error: "Erreur 500" });
-        const message = screen.getByText("Erreur 500");
-        expect(message).toBeTruthy();
-      });
+      // Verifying that after bill update, the navigation is directed to the Bills page
+      expect(onNavigate).toHaveBeenCalledWith(ROUTES_PATH['Bills']);
     });
   });
 });
-ç
+
+// Testing the POST NewBill API call
+describe('Given I am on NewBill Page and submit a valid form', () => {
+  test('Then updateBill method should be called with right parameters', async () => {
+    // Preparing the form data
+    const inputData = mockedStore.bills().formData;
+
+    // Filling out the form fields
+    screen.getByTestId('expense-type').value = inputData.type;
+    screen.getByTestId('expense-name').value = inputData.name;
+    screen.getByTestId('datepicker').value = inputData.date;
+    screen.getByTestId('amount').value = inputData.amount;
+    screen.getByTestId('vat').value = inputData.vat;
+    screen.getByTestId('pct').value = inputData.pct;
+    screen.getByTestId('commentary').value = inputData.commentary;
+    newBill.fileUrl = inputData.fileUrl;
+    newBill.fileName = inputData.fileName;
+
+    // Mocking the updateBill method
+    jest.spyOn(newBill, 'updateBill').mockImplementation(() => {});
+
+    // Simulating form submission
+    const form = screen.getByTestId('form-new-bill');
+    fireEvent.submit(form);
+
+    // Verifying that updateBill method is called with correct parameters
+    expect(newBill.updateBill).toHaveBeenCalledWith({
+      email: 'a@a',
+      type: 'Transports',
+      name: 'Ticket to Paris',
+      date: '2021-07-01',
+      amount: 100,
+      vat: '20',
+      pct: 20,
+      commentary: 'Business trip to Paris',
+      fileUrl: newBill.fileUrl,
+      fileName: newBill.fileName,
+      status: 'pending',
+    });
+
+    // Clearing the mock
+    newBill.updateBill.mockRestore();
+  });
+});
