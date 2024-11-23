@@ -167,18 +167,31 @@ describe('Given I am an employee', () => {
 describe('Given I am on NewBill Page and submit a valid form', () => {
   test('Then updateBill method should be called with right parameters', async () => {
     // Preparing the form data
-    const inputData = mockedStore.bills().formData;
+    //const inputData = mockedStore.bills().formData;
+    //console.log(mockedStore.
 
     // Filling out the form fields
-    screen.getByTestId('expense-type').value = inputData.type;
-    screen.getByTestId('expense-name').value = inputData.name;
-    screen.getByTestId('datepicker').value = inputData.date;
-    screen.getByTestId('amount').value = inputData.amount;
-    screen.getByTestId('vat').value = inputData.vat;
-    screen.getByTestId('pct').value = inputData.pct;
-    screen.getByTestId('commentary').value = inputData.commentary;
-    newBill.fileUrl = inputData.fileUrl;
-    newBill.fileName = inputData.fileName;
+    const expenseTypeGiven = "Transports"
+    const expenseNameGiven = "expenseNameGiven"
+    const datepickerGiven = ""
+    const amountGiven = 16
+    const vatGiven = "15"
+    const pctGiven = 30
+    const commentaryGiven = "commentaryGiven"
+
+    const fileUrlGiven = "fileUrlGiven"
+    const fileNameGiven = "fileNameGiven"
+    
+
+    screen.getByTestId('expense-type').value = expenseTypeGiven;
+    screen.getByTestId('expense-name').value = expenseNameGiven;
+    screen.getByTestId('datepicker').value = datepickerGiven;
+    screen.getByTestId('amount').value = amountGiven;
+    screen.getByTestId('vat').value = vatGiven;
+    screen.getByTestId('pct').value = pctGiven;
+    screen.getByTestId('commentary').value = commentaryGiven;
+    newBill.fileUrl = fileUrlGiven;
+    newBill.fileName = fileNameGiven;
 
     // Mocking the updateBill method
     jest.spyOn(newBill, 'updateBill').mockImplementation(() => {});
@@ -189,17 +202,17 @@ describe('Given I am on NewBill Page and submit a valid form', () => {
 
     // Verifying that updateBill method is called with correct parameters
     expect(newBill.updateBill).toHaveBeenCalledWith({
-      email: 'a@a',
-      type: 'Transports',
-      name: 'Ticket to Paris',
-      date: '2021-07-01',
-      amount: 100,
-      vat: '20',
-      pct: 20,
-      commentary: 'Business trip to Paris',
-      fileUrl: newBill.fileUrl,
-      fileName: newBill.fileName,
-      status: 'pending',
+      email: "a@a",
+      type: expenseTypeGiven,
+      name: expenseNameGiven,
+      date: datepickerGiven,
+      amount: amountGiven,
+      vat: vatGiven,
+      pct: pctGiven,
+      commentary: commentaryGiven,
+      fileUrl: fileUrlGiven,
+      fileName: fileNameGiven,
+      status: "pending",
     });
 
     // Clearing the mock
